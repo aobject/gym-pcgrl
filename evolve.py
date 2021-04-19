@@ -3,6 +3,7 @@ import os
 import pickle
 import time
 from pdb import set_trace as T
+import random
 from random import randint
 # import cv2
 from typing import Tuple
@@ -31,6 +32,8 @@ import ray
 import gym_pcgrl
 from gym_pcgrl.envs.helper import get_int_prob, get_string_map
 
+from play_call import local_play
+
 # Use for notebook
 # from tqdm.notebook import tqdm
 
@@ -44,6 +47,8 @@ conda install -c conda-forge notebook
 conda install pytorch torchvision torchaudio -c pytorch
 conda install tensorboard
 pip install 'ribs[all]' gym~=0.17.0 Box2D~=2.3.10 tqdm
+pip install 'ray[rllib]'
+conda install -c conda-forge debugpy
 git clone https://github.com/amidos2006/gym-pcgrl.git
 cd gym-pcgrl  # Must run in project root folder for access to pcgrl modules
 
@@ -68,6 +73,42 @@ https://arxiv.org/pdf/2009.01398.pdf
 RIBS examples:
 https://docs.pyribs.org/en/stable/tutorials/lunar_lander.html
 """
+
+# Define random player for testing
+def player(state,action_space=6):
+    """
+    player takes a current state and returns an action
+    state (numpy array dtype uint8 shape (90, 130, 4)): the current state of the game as pixel values
+    action_space (int): The number of discrete actions your player can take. 
+    returns a randomly selected action. 
+    """
+    return random.randint(0, action_space-1)
+
+
+def get_fstring(int_map):
+    """
+    Takes numpy integer array.
+    Returns GVGAI format string representation.
+
+    Zelda Key
+
+    array   pcgrl       GVGAI
+    0       empty       .
+    1       solid       w
+    2       player      A
+    3       key         +
+    4       door        g
+    5       bat         1
+    6       scorpion    3
+    7       spider      2
+
+    """
+    keys = np.array(['.','w','A','+','g','1','3','2']) 
+    w_walls = np.ones((13,9), dtype=int)
+    w_walls[1:-1,1:-1] = int_map
+    return '\n'.join(','.join(x for x in y) for y in keys[w_walls])
+
+
 
 
 def unravel_index(
@@ -433,6 +474,33 @@ def simulate(env, model, n_tile_types, init_states, bc_names, static_targets, se
                             targets_penalty -= static_targets[k] - stats[k]
 #                   targets_penalty = np.sum([abs(static_targets[k] - stats[k]) if not isinstance(static_targets[k], tuple) else abs(np.arange(*static_targets[k]) - stats[k]).min() for k in static_targets])
                     batch_targets_penalty -= targets_penalty
+
+                    # TASK: get player perfomance to use in fitness function
+                    # Get map as string
+                    level_string = get_fstring(int_map)
+
+                    # Level strings for testing
+
+                    # # Loosing level
+                    # level_string = ('wwwwwwwwwwwww\nwwAwg+...w..w\nwwww........w\nw...w...w..ww\nwww.w2..wwwww\nw.......w...w\nw.2.........w\nw.....2.....w\nwwwwwwwwwwwww')
+
+                    # Winning level
+                    # level_string = ("wwwwwwwwwwwww\nwwA+g....w..w\nwwww........w\nw...w...w..ww\nwww.w2..wwwww\nw.......w...w\nw.2.........w\nw.....2.....w\nwwwwwwwwwwwww")
+
+                    # Call player 1
+                    gvgai_path = '/Volumes/Data_01/home/g/hybrid/GVGAI_GYM/'
+                    result = None
+                    
+                    try:
+                        result = local_play(level_string, player, gvgai_path, 1000)
+                    except:
+                        result = -1
+
+                    # print(result)
+
+
+                    # Call player 2
+                    # Decide reward and save for use later
 
             if RENDER:
                 env.render()
@@ -833,13 +901,15 @@ if __name__ == '__main__':
         '-p',
         '--problem',
         help='Which game to generate levels for (PCGRL "problem").',
-        default='binary',
+        default='mini',
+        # default='binary',
     )
     opts.add_argument(
         '-e',
         '--exp_name',
         help='Name of the experiment, for save files.',
-        default='0',
+        default='mini_ex_06_debug_path-length_emptiness',
+        # default='0',
     )
     opts.add_argument(
         '-ng',
@@ -867,7 +937,7 @@ if __name__ == '__main__':
         '--behavior_characteristics',
         nargs='+',
         help='A list of strings corresponding to the behavior characteristics that will act as the dimensions for our grid of elites during evolution.',
-        default=['regions','path-length'],
+        default=['path-length','emptiness'],
     )
     opts.add_argument(
         '-r',

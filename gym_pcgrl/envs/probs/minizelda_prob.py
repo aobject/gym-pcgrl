@@ -17,8 +17,8 @@ class MiniZeldaProblem(ZeldaProblem):
     """
     def __init__(self):
         super().__init__()
-        self._width = 5
-        self._height = 5
+        self._width = 7
+        self._height = 11
 
 
         
